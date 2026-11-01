@@ -14,6 +14,10 @@ export default function Deposit({ onDone }) {
     e.preventDefault();
     if (!files.length && !f.link)
       return alert("Ajoutez au moins un fichier ou un lien");
+    if (files.reduce((a, x) => a + x.size, 0) > 4.2e6)
+      return alert(
+        "Taille totale limitée à 4 Mo par dépôt : compressez vos fichiers ou déposez-les en plusieurs fois.",
+      );
     if (f.link && !/^https?:\/\//i.test(f.link))
       return alert("Le lien doit commencer par http:// ou https://");
     const fd = new FormData();
@@ -105,7 +109,8 @@ export default function Deposit({ onDone }) {
         onChange={set("titre")}
       />
       <p>
-        Fichiers (pdf, word, ppt, pptx, images — 20 Mo max, 5 fichiers) :<br />
+        Fichiers (pdf, word, ppt, pptx, images — 4 Mo au total, 5 fichiers max)
+        :<br />
         <input
           type="file"
           multiple

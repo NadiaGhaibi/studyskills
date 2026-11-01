@@ -37,6 +37,8 @@ export default function Works() {
     edit(r, fd);
   };
   const addFiles = (r, files) => {
+    if ([...files].reduce((a, x) => a + x.size, 0) > 4.2e6)
+      return alert("Taille totale limitée à 4 Mo.");
     const fd = new FormData();
     [...files].forEach((x) => fd.append("files", x));
     edit(r, fd);
