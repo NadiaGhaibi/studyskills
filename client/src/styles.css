@@ -197,6 +197,15 @@ textarea {
   margin: 4px 4px 4px 0;
   max-width: 100%;
 }
+textarea {
+  width: 100%;
+  display: block;
+  min-height: 120px;
+  resize: vertical;
+}
+.annonce p {
+  white-space: pre-wrap;
+}
 input[type="file"] {
   padding: 7px;
   width: 100%;

@@ -13,6 +13,7 @@ import {
 } from "./common.jsx";
 import StudentSpace from "./student/StudentSpace.jsx";
 import Home from "./Home.jsx";
+import { AnnoncesTeacher } from "./Annonces.jsx";
 /* ---------- Enseignant ---------- */
 const CFG = {
   filieres: ["nom"],
@@ -361,11 +362,13 @@ function Teacher() {
         tabs={[
           ["w", "Travaux"],
           ["s", "Étudiants & notes"],
+          ["a", "Annonces"],
           ["c", "Configuration"],
         ]}
       />
       {tab === "w" && <TWorks />}
       {tab === "s" && <Students />}
+      {tab === "a" && <AnnoncesTeacher />}
       {tab === "c" && (
         <>
           <div className="card">

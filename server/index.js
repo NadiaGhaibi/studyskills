@@ -512,6 +512,25 @@ app.get(
   ),
 );
 
+// ---- Annonces : visibles par les étudiants de l'enseignant (tous, ou ceux d'un auditoire ciblé)
+app.get(
+  "/api/annonces",
+  auth("student"),
+  h(async (req, res) =>
+    res.json(
+      ok(
+        await sb
+          .from("annonces")
+          .select("id,titre,contenu,created_at")
+          .eq("teacher_id", tid(req.me))
+          .or(`auditoire_id.is.null,auditoire_id.eq.${req.me.auditoire_id}`)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ),
+    ),
+  ),
+);
+
 // ---- Enseignant : configuration (CRUD générique, chaque enseignant ne voit que ses données)
 const T = {
   filieres: 1,
@@ -520,12 +539,15 @@ const T = {
   modules: 1,
   themes: 1,
   activities: 1,
+  annonces: 1,
 };
 const chk = h((req, res, next) =>
   T[req.params.t] ? next() : res.status(404).json({ error: "Table inconnue" }),
 );
-const clean = ({ id, teacher_id, ...b }) =>
-  "echeance" in b ? { ...b, echeance: b.echeance || null } : b;
+const clean = ({ id, teacher_id, ...b }) => {
+  for (const k of ["echeance", "auditoire_id"]) if (k in b) b[k] = b[k] || null;
+  return b;
+};
 app.get(
   "/api/admin/:t",
   adm,
