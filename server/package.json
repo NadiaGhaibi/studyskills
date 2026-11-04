@@ -1,13 +1,9 @@
 {
- "name": "study-skills",
- "private": true,
+ "name": "study-skills-server",
  "type": "module",
  "scripts": {
-  "install:all": "npm --prefix server install && npm --prefix client install",
-  "dev:server": "npm --prefix server run dev",
-  "dev:client": "npm --prefix client run dev",
-  "build": "npm --prefix client run build",
-  "start": "npm --prefix server start"
+  "start": "node index.js",
+  "dev": "node --watch index.js"
  },
  "dependencies": {
   "@supabase/supabase-js": "^2.45.0",
