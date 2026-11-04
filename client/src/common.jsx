@@ -88,6 +88,19 @@ export const moyenne = (grades, sid, mid) => {
     .map((g) => g.valeur);
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
+export const download = async (path, filename) => {
+  const r = await fetch("/api" + path, {
+    headers: { Authorization: "Bearer " + localStorage.t },
+  });
+  if (!r.ok)
+    throw new Error((await r.json().catch(() => ({}))).error || "Erreur");
+  const url = URL.createObjectURL(await r.blob());
+  Object.assign(document.createElement("a"), {
+    href: url,
+    download: filename,
+  }).click();
+  URL.revokeObjectURL(url);
+};
 export const fmt = (n) => (n == null ? "—" : n.toFixed(2) + " / 20");
 
 // Échéances : un travail est en retard s'il a été soumis après l'échéance de son activité

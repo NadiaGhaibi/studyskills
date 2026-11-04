@@ -10,6 +10,7 @@ import {
   fmt,
   Delai,
   toLocal,
+  download,
 } from "./common.jsx";
 import StudentSpace from "./student/StudentSpace.jsx";
 import Home from "./Home.jsx";
@@ -325,6 +326,22 @@ function Students() {
             </option>
           ))}
         </select>
+        <button
+          disabled={!f.auditoire_id}
+          title={f.auditoire_id ? "" : "Choisissez un auditoire"}
+          onClick={() =>
+            download(
+              "/t/export?auditoire_id=" + f.auditoire_id,
+              "notes_" +
+                (
+                  aud?.find((a) => a.id === f.auditoire_id)?.nom || "auditoire"
+                ).replace(/[^\w-]+/g, "_") +
+                ".xlsx",
+            ).catch((e) => alert(e.message))
+          }
+        >
+          ⬇ Exporter les notes (Excel)
+        </button>
         <input
           placeholder="Chercher un étudiant"
           onChange={(e) => setF({ ...f, q: e.target.value })}

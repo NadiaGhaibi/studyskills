@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import ExcelJS from "exceljs";
 const sb = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -38,6 +39,15 @@ const ok = (r) => {
   if (r.error) throw err(400, r.error.message);
   return r.data;
 };
+const all = async (mk) => {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await mk().range(from, from + 999);
+    if (error) throw err(400, error.message);
+    out.push(...data);
+    if (data.length < 1000) return out;
+  }
+}; // Supabase limite à 1000 lignes par requête
 const h = (f) => (req, res, next) =>
   Promise.resolve(f(req, res, next)).catch((e) =>
     res.status(e.status || 500).json({ error: e.message }),
@@ -622,12 +632,15 @@ app.get(
         q = "",
       } = req.query,
       s = q.toLowerCase();
-    let x = sb
-      .from("submissions")
-      .select(SEL)
-      .order("created_at", { ascending: false });
-    if (activity_id) x = x.eq("activity_id", activity_id);
-    const rows = ok(await x).filter(
+    const mk = () => {
+      const x = sb
+        .from("submissions")
+        .select(SEL)
+        .order("created_at", { ascending: false })
+        .order("id");
+      return activity_id ? x.eq("activity_id", activity_id) : x;
+    };
+    const rows = (await all(mk)).filter(
       (r) =>
         r.activity.teacher_id === req.me.id &&
         (!theme_id || r.activity.theme.id === theme_id) &&
@@ -681,14 +694,121 @@ app.get(
   adm,
   h(async (req, res) =>
     res.json(
-      ok(
-        await sb
+      await all(() =>
+        sb
           .from("grades")
           .select("*, modules!inner(teacher_id)")
-          .eq("modules.teacher_id", req.me.id),
+          .eq("modules.teacher_id", req.me.id)
+          .order("id"),
       ),
     ),
   ),
+);
+// Export Excel : un onglet par module ; une ligne par étudiant de l'auditoire ; une colonne par activité + moyenne /20
+app.get(
+  "/api/t/export",
+  adm,
+  h(async (req, res) => {
+    const aud = ok(
+      await sb
+        .from("auditoires")
+        .select("id,nom")
+        .eq("id", req.query.auditoire_id)
+        .eq("teacher_id", req.me.id)
+        .single(),
+    );
+    const studs = ok(
+      await sb
+        .from("profiles")
+        .select(
+          "id,nom,prenom,num_inscription,groupe:groupes_td(nom),team_members(team:teams(nom))",
+        )
+        .eq("role", "student")
+        .eq("auditoire_id", aud.id)
+        .order("nom"),
+    );
+    const mods = ok(
+      await sb
+        .from("modules")
+        .select("id,nom,ordre,themes(ordre,activities(id,titre))")
+        .eq("teacher_id", req.me.id)
+        .order("ordre"),
+    );
+    const ids = new Set(studs.map((s) => s.id)),
+      map = new Map();
+    (
+      await all(() =>
+        sb
+          .from("grades")
+          .select(
+            "student_id,activity_id,module_id,note,valeur,modules!inner(teacher_id)",
+          )
+          .eq("modules.teacher_id", req.me.id)
+          .not("activity_id", "is", null)
+          .order("id"),
+      )
+    )
+      .filter((g) => ids.has(g.student_id))
+      .forEach((g) => map.set(g.student_id + "|" + g.activity_id, g));
+    const wb = new ExcelJS.Workbook();
+    for (const m of mods) {
+      const acts = [...m.themes]
+        .sort((a, b) => a.ordre - b.ordre)
+        .flatMap((t) => t.activities);
+      const ws = wb.addWorksheet(
+        m.nom.replace(/[\\/?*\[\]:]/g, "").slice(0, 31) || "Module",
+      );
+      ws.columns = [
+        { header: "Nom", key: "nom", width: 20 },
+        { header: "Prénom", key: "prenom", width: 18 },
+        { header: "N° d'inscription", key: "num", width: 16 },
+        { header: "Groupe TD", key: "gr", width: 12 },
+        { header: "Équipe", key: "eq", width: 18 },
+        ...acts.map((a) => ({
+          header: a.titre,
+          key: a.id,
+          width: Math.min(Math.max(a.titre.length + 2, 10), 28),
+        })),
+        { header: "Moyenne / 20", key: "moy", width: 14 },
+      ];
+      for (const s of studs) {
+        const gs = acts.map((a) => map.get(s.id + "|" + a.id)).filter(Boolean),
+          moy = gs.length
+            ? Math.round(
+                (gs.reduce((t, g) => t + g.valeur, 0) / gs.length) * 100,
+              ) / 100
+            : null;
+        ws.addRow({
+          nom: s.nom,
+          prenom: s.prenom,
+          num: s.num_inscription,
+          gr: s.groupe?.nom || "",
+          eq: [].concat(s.team_members || [])[0]?.team?.nom || "",
+          ...Object.fromEntries(
+            acts.map((a) => [a.id, map.get(s.id + "|" + a.id)?.note ?? ""]),
+          ),
+          moy,
+        });
+      }
+      const head = ws.getRow(1);
+      head.font = { bold: true };
+      head.alignment = { wrapText: true, vertical: "middle" };
+      head.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFFE27A" },
+      };
+      ws.getColumn("moy").numFmt = "0.00";
+      ws.getColumn("moy").font = { bold: true };
+      ws.views = [{ state: "frozen", xSplit: 2, ySplit: 1 }];
+    }
+    if (!wb.worksheets.length) wb.addWorksheet("Notes");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.send(Buffer.from(await wb.xlsx.writeBuffer()));
+  }),
 );
 app.put(
   "/api/t/grades",
