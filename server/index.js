@@ -6,17 +6,27 @@ import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import ExcelJS from "exceljs";
-const sb = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-);
-const anon = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY,
-);
+const MISSING = [
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_KEY",
+].filter((k) => !process.env[k]); // message clair au lieu d'un plantage
+const URL_ = process.env.SUPABASE_URL || "http://missing.invalid";
+const sb = createClient(URL_, process.env.SUPABASE_SERVICE_KEY || "missing");
+const anon = createClient(URL_, process.env.SUPABASE_ANON_KEY || "missing");
 const app = express();
 app.use(cors(), express.json());
+app.use((req, res, next) =>
+  MISSING.length
+    ? res
+        .status(500)
+        .json({
+          error:
+            "Variables d’environnement manquantes sur le serveur : " +
+            MISSING.join(", "),
+        })
+    : next(),
+);
 const up = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4e6, files: 5 },
@@ -133,6 +143,34 @@ app.post(
     });
     if (error) throw err(401, "Identifiants invalides");
     res.json({ token: data.session.access_token });
+  }),
+);
+// ---- Mot de passe oublié
+app.post(
+  "/api/password/forgot",
+  h(async (req, res) => {
+    const email = (req.body.email || "").trim();
+    if (email)
+      await anon.auth.resetPasswordForEmail(email, {
+        redirectTo: req.body.redirectTo,
+      });
+    res.json({ ok: true }); // même réponse que le compte existe ou non
+  }),
+);
+app.post(
+  "/api/password/reset",
+  h(async (req, res) => {
+    const { access_token, password } = req.body;
+    if (!password || password.length < 6)
+      throw err(400, "Mot de passe : 6 caractères minimum");
+    const {
+      data: { user },
+    } = await sb.auth.getUser(access_token || "");
+    if (!user)
+      throw err(401, "Lien expiré ou invalide : demandez un nouveau lien");
+    const r = await sb.auth.admin.updateUserById(user.id, { password });
+    if (r.error) throw err(400, r.error.message);
+    res.json({ ok: true });
   }),
 );
 app.get(
@@ -402,12 +440,12 @@ const sign = async (rows) => {
     );
   return rows;
 };
-const store = (files = [], me) =>
+const store = (files = [], me, prefix = me.id) =>
   Promise.all(
     files.map(async (f) => {
       const ext = f.originalname.split(".").pop().toLowerCase();
       if (!OK.includes(ext)) throw err(400, "Format non autorisé : " + ext);
-      const path = `${me.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const path = `${prefix}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       ok(
         await sb.storage
           .from("travaux")
@@ -518,6 +556,136 @@ app.get(
   h(async (req, res) =>
     res.json(
       ok(await sb.from("grades").select("*").eq("student_id", req.me.id)),
+    ),
+  ),
+);
+
+// ---- Cours : supports publiés par l'enseignant (fichiers et/ou lien ; titre et description facultatifs)
+const coursFields = (b) => ({
+  titre: (b.titre || "").trim() || null,
+  description: (b.description || "").trim() || null,
+  link: (b.link || "").trim() || null,
+  auditoire_id: b.auditoire_id || null,
+});
+const checkCours = async (me, f) => {
+  if (f.link && !/^https?:\/\//i.test(f.link))
+    throw err(400, "Le lien doit commencer par http:// ou https://");
+  if (f.auditoire_id)
+    ok(
+      await sb
+        .from("auditoires")
+        .select("id")
+        .eq("id", f.auditoire_id)
+        .eq("teacher_id", me.id)
+        .single(),
+    );
+};
+const ownCours = async (me, id) => {
+  const c = (
+    await sb
+      .from("cours")
+      .select("*")
+      .eq("id", id)
+      .eq("teacher_id", me.id)
+      .maybeSingle()
+  ).data;
+  if (!c) throw err(404, "Cours introuvable");
+  return c;
+};
+app.get(
+  "/api/t/cours",
+  adm,
+  h(async (req, res) =>
+    res.json(
+      await sign(
+        ok(
+          await sb
+            .from("cours")
+            .select("*")
+            .eq("teacher_id", req.me.id)
+            .order("created_at", { ascending: false }),
+        ),
+      ),
+    ),
+  ),
+);
+app.post(
+  "/api/t/cours",
+  adm,
+  up.array("files"),
+  h(async (req, res) => {
+    const f = coursFields(req.body);
+    await checkCours(req.me, f);
+    if (!req.files?.length && !f.link)
+      throw err(400, "Ajoutez au moins un fichier ou un lien");
+    const files = await store(req.files, req.me, `cours/${req.me.id}`);
+    res.json(
+      ok(
+        await sb
+          .from("cours")
+          .insert({ ...f, teacher_id: req.me.id, files })
+          .select()
+          .single(),
+      ),
+    );
+  }),
+);
+app.put(
+  "/api/t/cours/:id",
+  adm,
+  up.array("files"),
+  h(async (req, res) => {
+    const c = await ownCours(req.me, req.params.id),
+      f = coursFields(req.body);
+    await checkCours(req.me, f);
+    const old = c.files || [],
+      remove = JSON.parse(req.body.remove || "[]").filter((p) =>
+        old.some((x) => x.path === p),
+      );
+    const keep = old.filter((x) => !remove.includes(x.path));
+    const added = await store(req.files, req.me, `cours/${req.me.id}`);
+    if (!keep.length && !added.length && !f.link)
+      throw err(400, "Il faut au moins un fichier ou un lien");
+    if (remove.length) await sb.storage.from("travaux").remove(remove);
+    res.json(
+      ok(
+        await sb
+          .from("cours")
+          .update({ ...f, files: [...keep, ...added] })
+          .eq("id", c.id)
+          .select()
+          .single(),
+      ),
+    );
+  }),
+);
+app.delete(
+  "/api/t/cours/:id",
+  adm,
+  h(async (req, res) => {
+    const c = await ownCours(req.me, req.params.id);
+    if (c.files?.length)
+      await sb.storage.from("travaux").remove(c.files.map((x) => x.path));
+    ok(await sb.from("cours").delete().eq("id", c.id));
+    res.json({ ok: true });
+  }),
+);
+// Étudiant : cours de son enseignant (tous, ou ceux de son auditoire)
+app.get(
+  "/api/cours",
+  auth("student"),
+  h(async (req, res) =>
+    res.json(
+      await sign(
+        ok(
+          await sb
+            .from("cours")
+            .select("id,titre,description,link,files,created_at,auditoire_id")
+            .eq("teacher_id", tid(req.me))
+            .or(`auditoire_id.is.null,auditoire_id.eq.${req.me.auditoire_id}`)
+            .order("created_at", { ascending: false }),
+        ),
+      ),
     ),
   ),
 );
@@ -709,6 +877,7 @@ app.get(
   "/api/t/export",
   adm,
   h(async (req, res) => {
+    const ExcelJS = (await import("exceljs")).default; // chargé à la demande : le reste du site fonctionne même si cette dépendance manque
     const aud = ok(
       await sb
         .from("auditoires")
