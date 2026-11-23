@@ -6,6 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+process.on("unhandledRejection", (e) =>
+  console.error("[non géré] promesse rejetée :", e),
+);
+process.on("uncaughtException", (e) =>
+  console.error("[non géré] exception :", e),
+);
 const MISSING = [
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
@@ -59,9 +65,13 @@ const all = async (mk) => {
   }
 }; // Supabase limite à 1000 lignes par requête
 const h = (f) => (req, res, next) =>
-  Promise.resolve(f(req, res, next)).catch((e) =>
-    res.status(e.status || 500).json({ error: e.message }),
-  );
+  Promise.resolve(f(req, res, next)).catch((e) => {
+    console.error(
+      `[${req.method} ${req.originalUrl}] HTTP ${e.status || 500} :`,
+      e.message || e,
+    );
+    res.status(e.status || 500).json({ error: e.message || "Erreur serveur" });
+  });
 const auth = (role) =>
   h(async (req, res, next) => {
     const {
@@ -161,15 +171,31 @@ app.post(
   "/api/password/reset",
   h(async (req, res) => {
     const { access_token, password } = req.body;
+    console.log(
+      "[reset] requête reçue, token présent :",
+      !!access_token,
+      "| longueur mot de passe :",
+      (password || "").length,
+    );
     if (!password || password.length < 6)
       throw err(400, "Mot de passe : 6 caractères minimum");
     const {
       data: { user },
+      error,
     } = await sb.auth.getUser(access_token || "");
-    if (!user)
+    if (!user) {
+      console.error(
+        "[reset] getUser a échoué :",
+        error?.message || "pas d’utilisateur",
+      );
       throw err(401, "Lien expiré ou invalide : demandez un nouveau lien");
+    }
     const r = await sb.auth.admin.updateUserById(user.id, { password });
-    if (r.error) throw err(400, r.error.message);
+    if (r.error) {
+      console.error("[reset] updateUserById :", r.error.message);
+      throw err(400, r.error.message);
+    }
+    console.log("[reset] mot de passe modifié pour", user.email);
     res.json({ ok: true });
   }),
 );
