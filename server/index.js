@@ -1111,4 +1111,3 @@ if (fs.existsSync(dist)) {
 if (!process.env.VERCEL)
   app.listen(process.env.PORT || 4000, () => console.log("API prête"));
 export default app; // utilisé par api/index.js sur Vercel
-app.get("/api/ping", (req, res) => res.json({ ok: true }));
