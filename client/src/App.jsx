@@ -13,7 +13,7 @@ import {
   download,
 } from "./common.jsx";
 import StudentSpace from "./student/StudentSpace.jsx";
-import Home from "./Home.jsx";
+import Home, { NewPassword } from "./Home.jsx";
 import { AnnoncesTeacher } from "./Annonces.jsx";
 import { CoursTeacher } from "./Cours.jsx";
 /* ---------- Enseignant ---------- */
@@ -424,6 +424,13 @@ export default function App() {
   useEffect(() => {
     init();
   }, []);
+  // Lien reçu par email : Supabase revient avec #access_token=…&type=recovery
+  const [recovery, setRecovery] = useState(() => {
+    const q = new URLSearchParams(location.hash.slice(1));
+    return q.get("type") === "recovery" ? q.get("access_token") : null;
+  });
+  if (recovery)
+    return <NewPassword token={recovery} onDone={() => setRecovery(null)} />;
   if (me === undefined) return "…";
   if (!me) return <Home onOk={init} />;
   return (

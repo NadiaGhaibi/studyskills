@@ -42,10 +42,54 @@ export default function Home({ onOk }) {
           <ol>{themes.map(t => <li key={t}>{t}</li>)}</ol></div>)}
       </div>
       <div className="card" style={{ flex: '1 1 300px' }}>
-        <Tabs tab={mode} set={setMode} tabs={[['login', 'Connexion'], ['student', 'Inscription étudiant'], ['teacher', 'Inscription enseignant']]} />
-        <h3>{{ login: 'Connexion', student: 'Inscription étudiant', teacher: 'Inscription enseignant' }[mode]}</h3>
-        <Form key={mode} mode={mode} onOk={onOk} />
+        {mode === 'forgot' ? <Forgot onBack={() => setMode('login')} /> : <>
+          <Tabs tab={mode} set={setMode} tabs={[['login', 'Connexion'], ['student', 'Inscription étudiant'], ['teacher', 'Inscription enseignant']]} />
+          <h3>{{ login: 'Connexion', student: 'Inscription étudiant', teacher: 'Inscription enseignant' }[mode]}</h3>
+          <Form key={mode} mode={mode} onOk={onOk} />
+          {mode === 'login' && <button type="button" className="link" onClick={() => setMode('forgot')}>Mot de passe oublié ?</button>}
+        </>}
       </div>
     </div>
   </>;
+}
+
+export function Forgot({ onBack }) {
+  const [email, setEmail] = useState(''), [sent, setSent] = useState(false), [busy, setBusy] = useState(false);
+  const go = async e => {
+    e.preventDefault(); setBusy(true);
+    try { await api('/password/forgot', { method: 'POST', body: { email, redirectTo: location.origin } }); setSent(true) }
+    catch (x) { alert(x.message) }
+    setBusy(false);
+  };
+  return <>
+    <h3>Mot de passe oublié</h3>
+    {sent ? <p>Si un compte existe pour <b>{email}</b>, un lien de réinitialisation vient d’être envoyé. Pensez à vérifier vos spams.</p>
+      : <form onSubmit={go}><input style={{ width: '92%' }} type="email" placeholder="Votre adresse email" value={email} onChange={e => setEmail(e.target.value)} required />
+        <button style={{ width: '92%' }} disabled={busy}>Envoyer le lien</button></form>}
+    <button type="button" className="link" onClick={onBack}>← Retour à la connexion</button>
+  </>;
+}
+
+export function NewPassword({ token, onDone }) {
+  const [p, setP] = useState(''), [p2, setP2] = useState(''), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
+  const go = async e => {
+    e.preventDefault();
+    if (p !== p2) return alert('Les deux mots de passe ne correspondent pas');
+    setBusy(true);
+    try { await api('/password/reset', { method: 'POST', body: { access_token: token, password: p } }); setDone(true) }
+    catch (x) { alert(x.message) }
+    setBusy(false);
+  };
+  const back = () => { history.replaceState(null, '', location.pathname); onDone() };
+  if (done) return <div className="card" style={{ maxWidth: 420, margin: '40px auto' }}>
+    <h2>Mot de passe modifié</h2><p>Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.</p>
+    <button onClick={back}>Aller à la connexion</button></div>;
+  return <div className="card" style={{ maxWidth: 420, margin: '40px auto' }}>
+    <h2>Nouveau mot de passe</h2>
+    <form onSubmit={go}>
+      <input style={{ width: '92%' }} type="password" placeholder="Nouveau mot de passe (6 caractères min.)" minLength={6} required value={p} onChange={e => setP(e.target.value)} />
+      <input style={{ width: '92%' }} type="password" placeholder="Confirmer le mot de passe" minLength={6} required value={p2} onChange={e => setP2(e.target.value)} />
+      <button style={{ width: '92%' }} disabled={busy}>Enregistrer</button>
+    </form>
+  </div>;
 }

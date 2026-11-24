@@ -145,6 +145,55 @@ app.post(
     res.json({ token: data.session.access_token });
   }),
 );
+// ---- Mot de passe oublié
+// Seules ces adresses de retour sont acceptées (évite qu'un lien pointe vers un site externe)
+const REDIRECTS = ["https://studyskills.vercel.app", "http://localhost:5173"];
+app.post(
+  "/api/password/forgot",
+  h(async (req, res) => {
+    const email = (req.body.email || "").trim().toLowerCase();
+    const redirectTo = REDIRECTS.includes(req.body.redirectTo)
+      ? req.body.redirectTo
+      : REDIRECTS[0];
+    if (email) {
+      const { error } = await anon.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (error) {
+        console.error(
+          "[forgot] envoi refusé par Supabase :",
+          error.status,
+          error.message,
+        );
+        if (error.status === 429)
+          throw err(
+            429,
+            "Trop de demandes : patientez quelques minutes avant de réessayer",
+          );
+      }
+    }
+    res.json({ ok: true }); // même réponse que le compte existe ou non
+  }),
+);
+app.post(
+  "/api/password/reset",
+  h(async (req, res) => {
+    const { access_token, password } = req.body || {};
+    if (!password || password.length < 6)
+      throw err(400, "Mot de passe : 6 caractères minimum");
+    const {
+      data: { user },
+      error,
+    } = await sb.auth.getUser(access_token || "");
+    if (!user) {
+      console.error("[reset] jeton refusé :", error?.message);
+      throw err(401, "Lien expiré ou déjà utilisé : demandez un nouveau lien");
+    }
+    const r = await sb.auth.admin.updateUserById(user.id, { password });
+    if (r.error) throw err(400, r.error.message);
+    res.json({ ok: true });
+  }),
+);
 app.get(
   "/api/public/auditoires",
   h(async (req, res) =>
