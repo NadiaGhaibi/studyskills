@@ -13,7 +13,7 @@ import {
   download,
 } from "./common.jsx";
 import StudentSpace from "./student/StudentSpace.jsx";
-import Home, { NewPassword } from "./Home.jsx";
+import Home from "./Home.jsx";
 import { AnnoncesTeacher } from "./Annonces.jsx";
 import { CoursTeacher } from "./Cours.jsx";
 /* ---------- Enseignant ---------- */
@@ -424,9 +424,6 @@ export default function App() {
   useEffect(() => {
     init();
   }, []);
-  const recovery = new URLSearchParams(location.hash.slice(1));
-  if (recovery.get("type") === "recovery" && recovery.get("access_token"))
-    return <NewPassword token={recovery.get("access_token")} />;
   if (me === undefined) return "…";
   if (!me) return <Home onOk={init} />;
   return (

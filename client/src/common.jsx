@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 export const NOTES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'D'];
 export const api = async (p, o = {}) => {
   const r = await fetch('/api' + p, { method: o.method || 'GET', headers: { ...(localStorage.t ? { Authorization: 'Bearer ' + localStorage.t } : {}), ...(o.form ? {} : { 'Content-Type': 'application/json' }) }, body: o.form || (o.body && JSON.stringify(o.body)) });
-  const txt = await r.text(); let d = {}; try { d = JSON.parse(txt) } catch { d = { error: `Réponse inattendue du serveur (HTTP ${r.status}) : ${txt.slice(0, 120) || 'corps vide'}` } } if (r.status === 401 && localStorage.t) { localStorage.removeItem('t'); location.reload() } if (!r.ok) throw new Error(d.error || 'Erreur serveur (HTTP ' + r.status + ')'); return d;
+  const d = await r.json().catch(() => ({})); if (r.status === 401 && localStorage.t) { localStorage.removeItem('t'); location.reload() } if (!r.ok) throw new Error(d.error || 'Erreur serveur (HTTP ' + r.status + ')'); return d;
 };
 export const useApi = p => { const [d, s] = useState(); const load = useCallback(() => api(p).then(s).catch(e => alert(e.message)), [p]); useEffect(() => { load() }, [load]); return [d, load] };
 export const Files = ({ r }) => <>{r.files.map(f => <a key={f.path} href={f.url} target="_blank" rel="noreferrer">📎 {f.name}</a>)}{r.link && <a href={r.link} target="_blank" rel="noreferrer">🔗 lien</a>}</>;

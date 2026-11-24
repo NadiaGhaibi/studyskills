@@ -42,50 +42,10 @@ export default function Home({ onOk }) {
           <ol>{themes.map(t => <li key={t}>{t}</li>)}</ol></div>)}
       </div>
       <div className="card" style={{ flex: '1 1 300px' }}>
-        {mode === 'forgot' ? <Forgot onBack={() => setMode('login')} /> : <>
-          <Tabs tab={mode} set={setMode} tabs={[['login', 'Connexion'], ['student', 'Inscription étudiant'], ['teacher', 'Inscription enseignant']]} />
-          <h3>{{ login: 'Connexion', student: 'Inscription étudiant', teacher: 'Inscription enseignant' }[mode]}</h3>
-          <Form key={mode} mode={mode} onOk={onOk} />
-          {mode === 'login' && <button type="button" className="link" onClick={() => setMode('forgot')}>Mot de passe oublié ?</button>}
-        </>}
+        <Tabs tab={mode} set={setMode} tabs={[['login', 'Connexion'], ['student', 'Inscription étudiant'], ['teacher', 'Inscription enseignant']]} />
+        <h3>{{ login: 'Connexion', student: 'Inscription étudiant', teacher: 'Inscription enseignant' }[mode]}</h3>
+        <Form key={mode} mode={mode} onOk={onOk} />
       </div>
     </div>
   </>;
-}
-
-export function Forgot({ onBack }) {
-  const [email, setEmail] = useState(''), [sent, setSent] = useState(false);
-  const go = async e => {
-    e.preventDefault();
-    try { await api('/password/forgot', { method: 'POST', body: { email, redirectTo: location.origin } }); setSent(true) }
-    catch (x) { alert(x.message) }
-  };
-  return <>
-    <h3>Mot de passe oublié</h3>
-    {sent ? <p>Si un compte existe pour <b>{email}</b>, un lien de réinitialisation vient d’être envoyé. Pensez à vérifier vos spams.</p>
-      : <form onSubmit={go}><input style={{ width: '92%' }} type="email" placeholder="Votre adresse email" value={email} onChange={e => setEmail(e.target.value)} required /><button style={{ width: '92%' }}>Envoyer le lien</button></form>}
-    <button type="button" className="link" onClick={onBack}>← Retour à la connexion</button>
-  </>;
-}
-
-export function NewPassword({ token }) {
-  const [p, setP] = useState(''), [p2, setP2] = useState('');
-  const go = async e => {
-    e.preventDefault();
-    if (p !== p2) return alert('Les deux mots de passe ne correspondent pas');
-    try {
-      await api('/password/reset', { method: 'POST', body: { access_token: token, password: p } });
-      history.replaceState(null, '', location.pathname);
-      alert('Mot de passe modifié. Vous pouvez maintenant vous connecter.');
-      location.reload();
-    } catch (x) { alert(x.message) }
-  };
-  return <div className="card" style={{ maxWidth: 420, margin: '40px auto' }}>
-    <h2>Nouveau mot de passe</h2>
-    <form onSubmit={go}>
-      <input style={{ width: '92%' }} type="password" placeholder="Nouveau mot de passe (6 caractères min.)" minLength={6} required value={p} onChange={e => setP(e.target.value)} />
-      <input style={{ width: '92%' }} type="password" placeholder="Confirmer le mot de passe" minLength={6} required value={p2} onChange={e => setP2(e.target.value)} />
-      <button style={{ width: '92%' }}>Enregistrer</button>
-    </form>
-  </div>;
 }
