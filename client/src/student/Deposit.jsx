@@ -114,7 +114,7 @@ export default function Deposit({ onDone }) {
         <input
           type="file"
           multiple
-          accept=".pdf,.doc,.docx,.ppt,.pptx,image/*"
+          accept=".mp4,.html,.pdf,.doc,.docx,.ppt,.pptx,image/*"
           onChange={(e) => setFiles([...e.target.files])}
         />
       </p>
