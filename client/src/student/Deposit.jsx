@@ -109,7 +109,7 @@ export default function Deposit({ onDone }) {
         onChange={set("titre")}
       />
       <p>
-        Fichiers (pdf, word, ppt, pptx, images — 4 Mo au total, 5 fichiers max)
+        Fichiers (mp4, html, pdf, word, ppt, pptx, images — 4 Mo au total, 5 fichiers max)
         :<br />
         <input
           type="file"
